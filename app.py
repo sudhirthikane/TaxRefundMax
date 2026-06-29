@@ -761,23 +761,33 @@ active_tab = st.session_state["active_tab"]
 # --- TAB 1: PERSONAL & BANK DETAILS ---
 if active_tab == 0:
     st.markdown("### Personal Profile & Bank Details")
-    st.caption("Fields marked with PAN, Aadhaar, and Bank accounts are required for ITR validation.")
+    st.caption("Fields marked with an asterisk (*) are required for ITR validation.")
     
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("##### 👤 Personal Details")
-        st.text_input("Full Name", value=st.session_state["name"], key="widget_name")
-        st.text_input("PAN Number (Permanent Account Number)", value=st.session_state["pan"], key="widget_pan", placeholder="ABCDE1234F")
+        st.text_input("Full Name *", value=st.session_state["name"], key="widget_name")
+        if not st.session_state.get("name", "").strip():
+            st.markdown("<span style='color: #ef4444; font-size: 0.85rem;'>⚠️ Full Name is required</span>", unsafe_allow_html=True)
+            
+        st.text_input("PAN Number (Permanent Account Number) *", value=st.session_state["pan"], key="widget_pan", placeholder="ABCDE1234F")
         pan_val = st.session_state.get("pan", "").upper()
-        if pan_val and not re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$', pan_val):
+        if not pan_val:
+            st.markdown("<span style='color: #ef4444; font-size: 0.85rem;'>⚠️ PAN is required</span>", unsafe_allow_html=True)
+        elif not re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$', pan_val):
             st.warning("⚠️ Invalid PAN format (expected ABCDE1234F)")
             
-        st.text_input("Aadhaar Number", value=st.session_state["aadhaar"], key="widget_aadhaar", placeholder="12-digit number")
+        st.text_input("Aadhaar Number *", value=st.session_state["aadhaar"], key="widget_aadhaar", placeholder="12-digit number")
         aad_val = st.session_state.get("aadhaar", "").replace(" ", "")
-        if aad_val and not re.match(r'^[0-9]{12}$', aad_val):
+        if not aad_val:
+            st.markdown("<span style='color: #ef4444; font-size: 0.85rem;'>⚠️ Aadhaar is required</span>", unsafe_allow_html=True)
+        elif not re.match(r'^[0-9]{12}$', aad_val):
             st.warning("⚠️ Invalid Aadhaar number (expected 12 digits)")
             
-        st.text_input("Date of Birth (DD/MM/YYYY)", value=st.session_state["dob"], key="widget_dob")
+        st.text_input("Date of Birth (DD/MM/YYYY) *", value=st.session_state["dob"], key="widget_dob")
+        if not st.session_state.get("dob", "").strip():
+            st.markdown("<span style='color: #ef4444; font-size: 0.85rem;'>⚠️ Date of Birth is required</span>", unsafe_allow_html=True)
+            
         st.toggle("Are you a Senior Citizen (Age >= 60)?", value=st.session_state["is_senior"], key="widget_is_senior")
         
         options = [
@@ -793,18 +803,49 @@ if active_tab == 0:
         
     with col2:
         st.markdown("##### 🏦 Bank Account for Refund")
-        st.text_input("Bank Name", value=st.session_state["bank_name"], key="widget_bank_name")
-        st.text_input("IFSC Code", value=st.session_state["ifsc_code"], key="widget_ifsc_code", placeholder="ABCD0123456")
+        st.text_input("Bank Name *", value=st.session_state["bank_name"], key="widget_bank_name")
+        if not st.session_state.get("bank_name", "").strip():
+            st.markdown("<span style='color: #ef4444; font-size: 0.85rem;'>⚠️ Bank Name is required</span>", unsafe_allow_html=True)
+            
+        st.text_input("IFSC Code *", value=st.session_state["ifsc_code"], key="widget_ifsc_code", placeholder="ABCD0123456")
         ifsc_val = st.session_state.get("ifsc_code", "").upper()
-        if ifsc_val and not re.match(r'^[A-Z]{4}0[A-Z0-9]{6}$', ifsc_val):
+        if not ifsc_val:
+            st.markdown("<span style='color: #ef4444; font-size: 0.85rem;'>⚠️ IFSC Code is required</span>", unsafe_allow_html=True)
+        elif not re.match(r'^[A-Z]{4}0[A-Z0-9]{6}$', ifsc_val):
             st.warning("⚠️ Invalid IFSC format (expected ABCD0123456)")
             
-        st.text_input("Account Number", value=st.session_state["account_number"], key="widget_account_number")
+        st.text_input("Account Number *", value=st.session_state["account_number"], key="widget_account_number")
+        if not st.session_state.get("account_number", "").strip():
+            st.markdown("<span style='color: #ef4444; font-size: 0.85rem;'>⚠️ Account Number is required</span>", unsafe_allow_html=True)
         
     st.markdown("<br><hr>", unsafe_allow_html=True)
     if st.button("Save & Proceed to Income Sources ➡️", type="primary", use_container_width=True):
-        st.session_state["active_tab"] = 1
-        st.rerun()
+        pan_val = st.session_state.get("pan", "").upper()
+        aad_val = st.session_state.get("aadhaar", "").replace(" ", "")
+        ifsc_val = st.session_state.get("ifsc_code", "").upper()
+        
+        errors = []
+        if not st.session_state.get("name", "").strip():
+            errors.append("Full Name is required.")
+        if not pan_val or not re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$', pan_val):
+            errors.append("Valid PAN is required (format: ABCDE1234F).")
+        if not aad_val or not re.match(r'^[0-9]{12}$', aad_val):
+            errors.append("Valid Aadhaar is required (12-digit number).")
+        if not st.session_state.get("dob", "").strip():
+            errors.append("Date of Birth is required.")
+        if not st.session_state.get("bank_name", "").strip():
+            errors.append("Bank Name is required.")
+        if not ifsc_val or not re.match(r'^[A-Z]{4}0[A-Z0-9]{6}$', ifsc_val):
+            errors.append("Valid IFSC Code is required (format: ABCD0123456).")
+        if not st.session_state.get("account_number", "").strip():
+            errors.append("Account Number is required.")
+            
+        if errors:
+            for err in errors:
+                st.error(err)
+        else:
+            st.session_state["active_tab"] = 1
+            st.rerun()
 
 # --- TAB 2: INCOME SOURCES ---
 elif active_tab == 1:
@@ -1102,14 +1143,19 @@ elif active_tab == 4:
         st.session_state["tds_pool"], st.session_state["advance_tax"], st.session_state["self_assessment_tax"]
     )
     
-    st.download_button(
-        label="📥 Download ITR-1 Schema JSON File",
-        data=itr_json,
-        file_name=f"ITR1_AY2026-27_{st.session_state['pan'] or 'TAX_PAYER'}.json",
-        mime="application/json",
-        use_container_width=True,
-        type="primary"
-    )
+    profile_complete = bool(st.session_state.get("name", "").strip() and st.session_state.get("dob", "").strip())
+    
+    if pan_ok and aadhaar_ok and bank_ok and profile_complete:
+        st.download_button(
+            label="📥 Download ITR-1 Schema JSON File",
+            data=itr_json,
+            file_name=f"ITR1_AY2026-27_{st.session_state['pan'] or 'TAX_PAYER'}.json",
+            mime="application/json",
+            use_container_width=True,
+            type="primary"
+        )
+    else:
+        st.error("⚠️ Download Disabled: Please complete and correct all mandatory fields in Step 1 (Profile & Bank details) before generating the e-filing payload.")
     
     st.markdown("<br><hr>", unsafe_allow_html=True)
     if st.button("⬅️ Back to Deductions", use_container_width=True):
