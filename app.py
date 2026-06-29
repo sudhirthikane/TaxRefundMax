@@ -5,6 +5,11 @@ import datetime
 import json
 import plotly.graph_objects as go
 
+# --- HELPER HTML RENDERER ---
+def render_html(html_str):
+    cleaned = "\n".join([line.strip() for line in html_str.split("\n")])
+    st.markdown(cleaned, unsafe_allow_html=True)
+
 # --- CONFIGURATION & THEME ---
 st.set_page_config(page_title="TaxMaximizer Wizard", page_icon="🏦", layout="wide")
 
@@ -752,7 +757,7 @@ with st.sidebar:
     payable_old_html = f"<div style='font-size: 0.75rem; color: #f87171;'>Payable: ₹{payable_old:,.0f}</div>" if payable_old > 0 else ""
     payable_new_html = f"<div style='font-size: 0.75rem; color: #f87171;'>Payable: ₹{payable_new:,.0f}</div>" if payable_new > 0 else ""
     
-    st.markdown(f"""
+    render_html(f"""
         <div style="padding: 1rem; border-radius: 8px; background-color: #2563eb; color: white; margin-bottom: 10px;">
             <div style="font-size: 0.85rem; opacity: 0.9;">Old Regime Refund</div>
             <div style="font-size: 1.5rem; font-weight: 700;">₹{ref_old:,.0f}</div>
@@ -765,7 +770,7 @@ with st.sidebar:
             <div style="font-size: 0.75rem; opacity: 0.8;">Tax Liability: ₹{res_new["total_tax"]:,.0f}</div>
             {payable_new_html}
         </div>
-    """, unsafe_allow_html=True)
+    """)
     
     # Recommendation
     if res_old["total_tax"] < res_new["total_tax"]:
@@ -778,6 +783,9 @@ with st.sidebar:
         st.warning("⚖️ Both regimes yield identical tax.")
 
 # --- SIMULATED NAVIGATION TABS ---
+if st.session_state.get("nav_warning"):
+    st.error("🚨 Please fill in all mandatory profile and bank fields in Step 1 before navigating to other steps.")
+
 tab_cols = st.columns(5)
 tab_labels = [
     "👤 Step 1: Profile & Bank",
@@ -792,8 +800,28 @@ for idx, label in enumerate(tab_labels):
         is_active = (st.session_state["active_tab"] == idx)
         btn_type = "primary" if is_active else "secondary"
         if st.button(label, key=f"tab_btn_{idx}", type=btn_type, use_container_width=True):
-            st.session_state["active_tab"] = idx
-            st.rerun()
+            if idx > 0:
+                pan_val = st.session_state.get("pan", "").upper()
+                aad_val = st.session_state.get("aadhaar", "").replace(" ", "")
+                ifsc_val = st.session_state.get("ifsc_code", "").upper()
+                
+                profile_complete = bool(st.session_state.get("name", "").strip() and st.session_state.get("dob", "").strip())
+                pan_ok = bool(re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$', pan_val))
+                aadhaar_ok = bool(re.match(r'^[0-9]{12}$', aad_val))
+                bank_ok = bool(st.session_state.get("bank_name", "").strip() and re.match(r'^[A-Z]{4}0[A-Z0-9]{6}$', ifsc_val) and st.session_state.get("account_number", "").strip())
+                
+                if not (profile_complete and pan_ok and aadhaar_ok and bank_ok):
+                    st.session_state["nav_warning"] = True
+                    st.session_state["active_tab"] = 0
+                    st.rerun()
+                else:
+                    st.session_state["nav_warning"] = False
+                    st.session_state["active_tab"] = idx
+                    st.rerun()
+            else:
+                st.session_state["nav_warning"] = False
+                st.session_state["active_tab"] = idx
+                st.rerun()
 
 st.divider()
 
@@ -1057,60 +1085,76 @@ elif active_tab == 4:
 
     # 2. Detailed Breakdown Table
     st.markdown("#### 📋 Comparative Tax Computation Table (FY 2025-26 Rules)")
-    breakdown_data = {
-        "Particulars": [
-            "Gross Salary Income",
-            "Less: Exempt Allowances (HRA, LTA, etc.)",
-            "Less: Standard Deduction u/s 16(ia)",
-            "Less: Professional Tax",
-            "Net Salary Income",
-            "Income / Loss from House Property",
-            "Income from Other Sources (Interest, Dividends)",
-            "Gross Total Income (GTI)",
-            "Less: Chapter VI-A Deductions",
-            "Taxable Income",
-            "Tax before Cess",
-            "Health & Education Cess (4%)",
-            "Total Tax Liability",
-            "Taxes Paid (TDS + Advance + Self-Assessment)",
-            "Refund Amount / (Balance Payable)"
-        ],
-        "Old Regime": [
-            f"₹{st.session_state['gross']:,.0f}",
-            f"-₹{st.session_state['exempt_allowances']:,.0f}",
-            f"-₹{50000.0 if st.session_state['gross'] > 0 else 0.0:,.0f}",
-            f"-₹{st.session_state['professional_tax']:,.0f}",
-            f"₹{res_old['net_salary']:,.0f}",
-            f"₹{res_old['hp_income']:,.0f}",
-            f"₹{res_old['other_sources']:,.0f}",
-            f"₹{res_old['gti']:,.0f}",
-            f"-₹{res_old['deductions']:,.0f}",
-            f"₹{res_old['taxable_income']:,.0f}",
-            f"₹{res_old['tax_before_cess']:,.0f}",
-            f"₹{res_old['cess']:,.0f}",
-            f"₹{res_old['total_tax']:,.0f}",
-            f"₹{total_taxes_paid:,.0f}",
-            f"₹{ref_old:,.0f}" if ref_old > 0 else f"-₹{payable_old:,.0f}"
-        ],
-        "New Regime": [
-            f"₹{st.session_state['gross']:,.0f}",
-            "N/A",
-            f"-₹{75000.0 if st.session_state['gross'] > 0 else 0.0:,.0f}",
-            "N/A",
-            f"₹{res_new['net_salary']:,.0f}",
-            f"₹{res_new['hp_income']:,.0f}",
-            f"₹{res_new['other_sources']:,.0f}",
-            f"₹{res_new['gti']:,.0f}",
-            f"-₹{res_new['deductions']:,.0f}",
-            f"₹{res_new['taxable_income']:,.0f}",
-            f"₹{res_new['tax_before_cess']:,.0f}",
-            f"₹{res_new['cess']:,.0f}",
-            f"₹{res_new['total_tax']:,.0f}",
-            f"₹{total_taxes_paid:,.0f}",
-            f"₹{ref_new:,.0f}" if ref_new > 0 else f"-₹{payable_new:,.0f}"
-        ]
-    }
-    st.table(breakdown_data)
+    
+    breakdown_rows = [
+        ("Gross Salary Income", f"₹{st.session_state['gross']:,.0f}", f"₹{st.session_state['gross']:,.0f}"),
+        ("Less: Exempt Allowances (HRA, LTA, etc.)", f"-₹{st.session_state['exempt_allowances']:,.0f}", "N/A"),
+        ("Less: Standard Deduction u/s 16(ia)", f"-₹{50000.0 if st.session_state['gross'] > 0 else 0.0:,.0f}", f"-₹{75000.0 if st.session_state['gross'] > 0 else 0.0:,.0f}"),
+        ("Less: Professional Tax", f"-₹{st.session_state['professional_tax']:,.0f}", "N/A"),
+        ("Net Salary Income", f"₹{res_old['net_salary']:,.0f}", f"₹{res_new['net_salary']:,.0f}"),
+        ("Income / Loss from House Property", f"₹{res_old['hp_income']:,.0f}", f"₹{res_new['hp_income']:,.0f}"),
+        ("Income from Other Sources (Interest, Dividends)", f"₹{res_old['other_sources']:,.0f}", f"₹{res_new['other_sources']:,.0f}"),
+        ("Gross Total Income (GTI)", f"₹{res_old['gti']:,.0f}", f"₹{res_new['gti']:,.0f}"),
+        ("Less: Chapter VI-A Deductions", f"-₹{res_old['deductions']:,.0f}", f"-₹{res_new['deductions']:,.0f}"),
+        ("Taxable Income", f"₹{res_old['taxable_income']:,.0f}", f"₹{res_new['taxable_income']:,.0f}"),
+        ("Tax before Cess", f"₹{res_old['tax_before_cess']:,.0f}", f"₹{res_new['tax_before_cess']:,.0f}"),
+        ("Health & Education Cess (4%)", f"₹{res_old['cess']:,.0f}", f"₹{res_new['cess']:,.0f}"),
+        ("Total Tax Liability", f"₹{res_old['total_tax']:,.0f}", f"₹{res_new['total_tax']:,.0f}"),
+        ("Taxes Paid (TDS + Advance + Self-Assessment)", f"₹{total_taxes_paid:,.0f}", f"₹{total_taxes_paid:,.0f}"),
+        ("Refund Amount / (Balance Payable)", 
+         f"<span style='color: #10b981; font-weight: 700;'>₹{ref_old:,.0f}</span>" if ref_old > 0 else f"<span style='color: #ef4444; font-weight: 700;'>-₹{payable_old:,.0f}</span>",
+         f"<span style='color: #10b981; font-weight: 700;'>₹{ref_new:,.0f}</span>" if ref_new > 0 else f"<span style='color: #ef4444; font-weight: 700;'>-₹{payable_new:,.0f}</span>")
+    ]
+    
+    html_table = """
+    <div style="overflow-x: auto; border-radius: 8px; border: 1px solid #cbd5e1; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);">
+        <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; font-size: 0.9rem; text-align: left; background-color: #ffffff;">
+            <thead>
+                <tr style="background-color: #1e293b; color: #ffffff; font-weight: 600;">
+                    <th style="padding: 14px 16px; border-bottom: 2px solid #cbd5e1;">Particulars</th>
+                    <th style="padding: 14px 16px; border-bottom: 2px solid #cbd5e1; text-align: right; width: 25%;">Old Regime</th>
+                    <th style="padding: 14px 16px; border-bottom: 2px solid #cbd5e1; text-align: right; width: 25%;">New Regime</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+    
+    summary_rows = ["Gross Total Income (GTI)", "Taxable Income", "Total Tax Liability", "Refund Amount / (Balance Payable)"]
+    
+    for idx, (label, val_old, val_new) in enumerate(breakdown_rows):
+        bg_color = "#f8fafc" if idx % 2 == 1 else "#ffffff"
+        
+        style_label = "font-weight: 500; color: #334155;"
+        style_val_old = "text-align: right; font-weight: 400; color: #475569;"
+        style_val_new = "text-align: right; font-weight: 400; color: #475569;"
+        
+        if label in summary_rows:
+            bg_color = "#f1f5f9"
+            style_label = "font-weight: 700; color: #0f172a;"
+            style_val_old = "text-align: right; font-weight: 700; color: #0f172a;"
+            style_val_new = "text-align: right; font-weight: 700; color: #0f172a;"
+            
+        if label == "Total Tax Liability":
+            bg_color = "#f1f5f9"
+            if res_old["total_tax"] < res_new["total_tax"]:
+                style_val_old = "text-align: right; font-weight: 700; color: #065f46; background-color: #d1fae5; border-radius: 4px; padding: 6px 12px;"
+            elif res_new["total_tax"] < res_old["total_tax"]:
+                style_val_new = "text-align: right; font-weight: 700; color: #065f46; background-color: #d1fae5; border-radius: 4px; padding: 6px 12px;"
+                
+        html_table += f"""
+                <tr style="background-color: {bg_color}; border-bottom: 1px solid #e2e8f0; transition: background-color 0.2s;">
+                    <td style="padding: 12px 16px; {style_label}">{label}</td>
+                    <td style="padding: 12px 16px; {style_val_old}">{val_old}</td>
+                    <td style="padding: 12px 16px; {style_val_new}">{val_new}</td>
+                </tr>
+        """
+        
+    html_table += """
+            </tbody>
+        </table>
+    </div>
+    """
+    render_html(html_table)
 
     # 3. Optimization suggestions
     st.markdown("#### 💡 Tax Saving Recommendations & Refund Maximizers")
@@ -1124,14 +1168,14 @@ elif active_tab == 4:
     if recs:
         for r in recs:
             with st.container():
-                st.markdown(f"""
+                render_html(f"""
                 <div class="rec-card">
                     <span style="font-weight: 700; color: #065f46; font-size: 1.1rem;">{r['category']}</span><br>
                     <span style="color: #374151;">{r['action']}</span><br>
                     <span style="font-weight: 600; color: #2563eb;">Estimated Tax Saved: ₹{r['tax_saving']:,.2f}</span>
                     <span style="font-size: 0.85rem; color: #6b7280; margin-left: 10px;">(Applicable to: {r['regime']} Regime)</span>
                 </div>
-                """, unsafe_allow_html=True)
+                """)
     else:
         st.info("🎉 Excellent job! You have fully optimized all available tax-saving opportunities.")
 
