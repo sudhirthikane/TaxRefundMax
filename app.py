@@ -53,6 +53,48 @@ st.markdown("""
             border-radius: 6px;
             margin-bottom: 10px;
         }
+        /* Smartphone & Mobile Optimizations */
+        @media (max-width: 640px) {
+            .wizard-title {
+                font-size: 1.8rem !important;
+            }
+            .wizard-subtitle {
+                font-size: 0.9rem !important;
+                margin-bottom: 1rem !important;
+            }
+            /* Force tab columns (5 columns block) to stay horizontal and be scrollable */
+            div[data-testid="stHorizontalBlock"]:has(div[data-testid="stColumn"]:nth-child(5)) {
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                padding-bottom: 8px !important;
+                gap: 8px !important;
+            }
+            div[data-testid="stHorizontalBlock"]:has(div[data-testid="stColumn"]:nth-child(5)) div[data-testid="stColumn"] {
+                min-width: 130px !important;
+                flex: 0 0 auto !important;
+            }
+            /* Align tab button text sizes on mobile */
+            .stButton > button {
+                font-size: 0.85rem !important;
+                min-height: 48px !important;
+                height: 48px !important;
+                padding: 0 8px !important;
+            }
+            /* Shrink summary cards for compact mobile screens */
+            .summary-card {
+                padding: 0.8rem !important;
+                margin-bottom: 0.8rem !important;
+            }
+            .summary-card span {
+                font-size: 22px !important;
+            }
+        }
+        /* Make all tables scrollable on mobile */
+        div.stTable {
+            overflow-x: auto !important;
+            display: block !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -1093,12 +1135,72 @@ elif active_tab == 4:
     else:
         st.info("🎉 Excellent job! You have fully optimized all available tax-saving opportunities.")
 
-    # 4. Bar chart
-    fig = go.Figure(data=[
-        go.Bar(name='Tax Liability', x=['Old Regime', 'New Regime'], y=[res_old["total_tax"], res_new["total_tax"]], marker_color='#ef4444'),
-        go.Bar(name='Refund Generated', x=['Old Regime', 'New Regime'], y=[ref_old, ref_new], marker_color='#22c55e')
-    ])
-    fig.update_layout(barmode='stack', height=300, margin=dict(l=0, r=0, t=10, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+    # 4. Professional Grouped Bar Chart
+    categories = ['Old Regime', 'New Regime']
+    
+    fig = go.Figure()
+    
+    # Trace 1: Tax Liability
+    fig.add_trace(go.Bar(
+        name='Tax Liability',
+        x=categories,
+        y=[res_old["total_tax"], res_new["total_tax"]],
+        marker_color='#f43f5e',  # Premium Coral Red
+        text=[f"₹{res_old['total_tax']:,.0f}", f"₹{res_new['total_tax']:,.0f}"],
+        textposition='outside',
+        hovertemplate='Regime: %{x}<br>Tax Liability: ₹%{y:,.2f}<extra></extra>'
+    ))
+    
+    # Trace 2: Taxes Paid (TDS / Prepaid)
+    fig.add_trace(go.Bar(
+        name='Taxes Paid (TDS)',
+        x=categories,
+        y=[total_taxes_paid, total_taxes_paid],
+        marker_color='#64748b',  # Sleek Slate Gray
+        text=[f"₹{total_taxes_paid:,.0f}", f"₹{total_taxes_paid:,.0f}"],
+        textposition='outside',
+        hovertemplate='Regime: %{x}<br>Taxes Paid: ₹%{y:,.2f}<extra></extra>'
+    ))
+    
+    # Trace 3: Refund Generated
+    fig.add_trace(go.Bar(
+        name='Estimated Refund',
+        x=categories,
+        y=[ref_old, ref_new],
+        marker_color='#10b981',  # Premium Mint Green
+        text=[f"₹{ref_old:,.0f}", f"₹{ref_new:,.0f}"],
+        textposition='outside',
+        hovertemplate='Regime: %{x}<br>Refund: ₹%{y:,.2f}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        barmode='group',
+        height=350,
+        margin=dict(l=20, r=20, t=30, b=20),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.05,
+            xanchor="center",
+            x=0.5
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor='#f1f5f9',
+            zeroline=True,
+            zerolinecolor='#cbd5e1',
+            title="Amount (₹)"
+        ),
+        xaxis=dict(
+            zeroline=False
+        ),
+        font=dict(
+            family="Inter, sans-serif",
+            size=12
+        )
+    )
     st.plotly_chart(fig, use_container_width=True)
 
     # 5. ITR filing verification & validation checklist
