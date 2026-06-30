@@ -4,6 +4,10 @@ import re
 import datetime
 import json
 import plotly.graph_objects as go
+import fitz
+import pytesseract
+from PIL import Image
+import io
 
 # --- HELPER HTML RENDERER ---
 def render_html(html_str):
@@ -106,9 +110,31 @@ st.markdown("""
 # --- HELPER PARSING CODES ---
 def extract_text_from_pdf(uploaded_file):
     try:
+        uploaded_file.seek(0)
         reader = PdfReader(uploaded_file)
-        return "".join([p.extract_text() or "" for p in reader.pages])
-    except:
+        text = "".join([p.extract_text() or "" for p in reader.pages])
+        
+        # If the extracted text is very short or empty, it is likely a scanned PDF
+        if len(text.strip()) < 50:
+            with st.spinner("✨ Scanned PDF detected! Running high-resolution Tesseract OCR. This might take a moment..."):
+                text = ""
+                uploaded_file.seek(0)
+                file_bytes = uploaded_file.read()
+                doc = fitz.open(stream=file_bytes, filetype="pdf")
+                
+                for page in doc:
+                    # Render page to an image (2x zoom for higher OCR resolution)
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                    img = Image.open(io.BytesIO(pix.tobytes("png")))
+                    # Perform OCR using Tesseract
+                    page_text = pytesseract.image_to_string(img)
+                    text += page_text + "\n"
+                    
+                uploaded_file.seek(0)
+            
+        return text
+    except Exception as e:
+        st.error(f"Error reading PDF with OCR: {e}")
         return ""
 
 def parse_form16_text(text):
@@ -558,75 +584,89 @@ def generate_itr1_json(is_senior, name, pan, aadhaar, dob, filing_section, bank_
     selected_res = res_new if selected_regime == "NEW" else res_old
     
     itr_data = {
-        "Declaration": {
-            "FilingSection": filing_section,
-            "Regime": selected_regime,
-            "FilingDate": str(datetime.date.today()),
-            "AssessmentYear": "2026-27",
-            "FinancialYear": "2025-26"
-        },
-        "PersonalInfo": {
-            "FullName": name,
-            "PAN": pan,
-            "AadhaarNumber": aadhaar,
-            "DOB": dob,
-            "IsSeniorCitizen": is_senior
-        },
-        "BankDetails": {
-            "BankName": bank_name,
-            "IFSC": ifsc_code,
-            "AccountNumber": account_number,
-            "RefundEligible": True
-        },
-        "IncomeDetails": {
-            "SalaryIncome": {
-                "GrossSalary": gross,
-                "ExemptAllowances": exempt_allowances,
-                "ProfessionalTax": professional_tax,
-                "StandardDeduction": 75000.0 if selected_regime == "NEW" else 50000.0,
-                "NetSalary": selected_res["net_salary"]
-            },
-            "HousePropertyIncome": {
-                "RentReceived": hp_rent_received,
-                "MunicipalTaxesPaid": hp_taxes_paid,
-                "LoanInterestSelfOccupied": hp_loan_interest_self,
-                "LoanInterestLetOut": hp_loan_interest_letout,
-                "NetIncomeHP": selected_res["hp_income"]
-            },
-            "OtherSourcesIncome": {
-                "SavingsInterest": other_inc_savings,
-                "DepositsInterest": other_inc_deposits,
-                "DividendIncome": other_inc_dividends,
-                "MiscIncome": other_inc_misc,
-                "TotalOtherIncome": selected_res["other_sources"]
-            },
-            "GrossTotalIncome": selected_res["gti"]
-        },
-        "Deductions": {
-            "ChapterVIA": {
-                "Section80C": ded_80c,
-                "Section80D_Self": ded_80d_self,
-                "Section80D_Parents": ded_80d_parents,
-                "Section80CCD_1B": ded_80ccd1b,
-                "Section80CCD_2": nps_emp,
-                "Section80E": ded_80e,
-                "Section80G": ded_80g,
-                "TotalDeductionsClaimed": selected_res["deductions"]
+        "ITR": {
+            "ITR1": {
+                "CreationInfo": {
+                    "SWVersionNo": "1.0",
+                    "SWCreatedBy": "TaxMaximizer Wizard",
+                    "XMLCreatedBy": "TaxMaximizer Wizard",
+                    "XMLCreationDate": str(datetime.date.today()),
+                    "IntermediaryCity": "N/A"
+                },
+                "Form_ITR1": {
+                    "FormName": "ITR-1",
+                    "Description": "For individuals being a resident (other than not ordinarily resident) having total income upto Rs.50 lakh, having Income from Salaries, one house property, other sources (Interest etc.), and agricultural income upto Rs.5 thousand",
+                    "AssessmentYear": "2026-27",
+                    "SchemaVer": "1.0",
+                    "PartA_GEN": {
+                        "PersonalInfo": {
+                            "AssesseeName": {
+                                "FirstName": name.split()[0] if name else "",
+                                "LastName": name.split()[-1] if name and len(name.split()) > 1 else ""
+                            },
+                            "PAN": pan,
+                            "AadhaarCardNo": aadhaar,
+                            "DOB": dob,
+                            "Status": "I"
+                        },
+                        "FilingStatus": {
+                            "ReturnFileSec": filing_section,
+                            "NewTaxRegime": "Yes" if selected_regime == "NEW" else "No"
+                        }
+                    },
+                    "PartB_TI": {
+                        "Salary": {
+                            "GrossSalary": gross,
+                            "SalaryExemptions": exempt_allowances,
+                            "NetSalary": selected_res["net_salary"],
+                            "DeductionUs16": 75000.0 if selected_regime == "NEW" else 50000.0,
+                            "DeductionUs16ia": professional_tax
+                        },
+                        "HouseProperty": {
+                            "GrossRentReceived": hp_rent_received,
+                            "TaxPaidToLocalAuth": hp_taxes_paid,
+                            "AnnualValue": max(0.0, hp_rent_received - hp_taxes_paid),
+                            "InterestPayable": hp_loan_interest_letout + hp_loan_interest_self,
+                            "IncomeFromHP": selected_res["hp_income"]
+                        },
+                        "OtherSources": {
+                            "InterestIncome": other_inc_savings + other_inc_deposits,
+                            "DividendIncome": other_inc_dividends,
+                            "AnyOtherIncome": other_inc_misc,
+                            "TotalOS": selected_res["other_sources"]
+                        },
+                        "GrossTotalIncome": selected_res["gti"]
+                    },
+                    "PartC_Deductions": {
+                        "Section80C": ded_80c,
+                        "Section80D": ded_80d_self + ded_80d_parents,
+                        "Section80CCD1B": ded_80ccd1b,
+                        "Section80CCD2": nps_emp,
+                        "Section80E": ded_80e,
+                        "Section80G": ded_80g,
+                        "TotalDeductions": selected_res["deductions"]
+                    },
+                    "PartD_TaxComputation": {
+                        "TotalIncome": selected_res["taxable_income"],
+                        "TaxPayableOnTotalIncome": selected_res["tax_before_cess"],
+                        "HealthAndEducationCess": selected_res["cess"],
+                        "GrossTaxLiability": selected_res["total_tax"],
+                        "TotalTaxesPaid": tds_pool + advance_tax + self_assessment_tax,
+                        "RefundDue": max(0.0, (tds_pool + advance_tax + self_assessment_tax) - selected_res["total_tax"]),
+                        "BalTaxPayable": max(0.0, selected_res["total_tax"] - (tds_pool + advance_tax + self_assessment_tax))
+                    },
+                    "Refund": {
+                        "BankAccountDtls": {
+                            "AddtnlBankDetails": {
+                                "BankName": bank_name,
+                                "IFSCCode": ifsc_code,
+                                "BankAccountNo": account_number,
+                                "UseForRefund": "true"
+                            }
+                        }
+                    }
+                }
             }
-        },
-        "TaxComputation": {
-            "TaxableIncome": selected_res["taxable_income"],
-            "TaxBeforeCess": selected_res["tax_before_cess"],
-            "Cess": selected_res["cess"],
-            "TotalTaxPayable": selected_res["total_tax"],
-            "PrepaidTaxes": {
-                "TDS": tds_pool,
-                "AdvanceTax": advance_tax,
-                "SelfAssessmentTax": self_assessment_tax,
-                "TotalPrepaid": tds_pool + advance_tax + self_assessment_tax
-            },
-            "NetRefund": max(0.0, (tds_pool + advance_tax + self_assessment_tax) - selected_res["total_tax"]),
-            "NetPayable": max(0.0, selected_res["total_tax"] - (tds_pool + advance_tax + self_assessment_tax))
         }
     }
     return json.dumps(itr_data, indent=4)
@@ -789,8 +829,8 @@ if st.session_state.get("nav_warning"):
 tab_cols = st.columns(5)
 tab_labels = [
     "👤 Step 1: Profile & Bank",
-    "💼 Step 2: Income Sources",
-    "📂 Step 3: Upload Docs",
+    "📂 Step 2: Upload Docs",
+    "💼 Step 3: Income Sources",
     "🛡️ Step 4: Deductions",
     "📈 Step 5: Tax Summary"
 ]
@@ -889,7 +929,7 @@ if active_tab == 0:
             st.markdown("<span style='color: #ef4444; font-size: 0.85rem;'>⚠️ Account Number is required</span>", unsafe_allow_html=True)
         
     st.markdown("<br><hr>", unsafe_allow_html=True)
-    if st.button("Save & Proceed to Income Sources ➡️", type="primary", use_container_width=True):
+    if st.button("Save & Proceed to Documents Upload ➡️", type="primary", use_container_width=True):
         pan_val = st.session_state.get("pan", "").upper()
         aad_val = st.session_state.get("aadhaar", "").replace(" ", "")
         ifsc_val = st.session_state.get("ifsc_code", "").upper()
@@ -917,8 +957,8 @@ if active_tab == 0:
             st.session_state["active_tab"] = 1
             st.rerun()
 
-# --- TAB 2: INCOME SOURCES ---
-elif active_tab == 1:
+# --- TAB 3: INCOME SOURCES ---
+elif active_tab == 2:
     st.markdown("### Declare Income Sources")
     st.caption("Flesh out your salary details, house property loss/rent, and other interest holdings.")
     
@@ -947,16 +987,16 @@ elif active_tab == 1:
     st.markdown("<br><hr>", unsafe_allow_html=True)
     col_prev, col_next = st.columns(2)
     with col_prev:
-        if st.button("⬅️ Back to Personal Details", use_container_width=True):
-            st.session_state["active_tab"] = 0
+        if st.button("⬅️ Back to Documents Upload", use_container_width=True):
+            st.session_state["active_tab"] = 1
             st.rerun()
     with col_next:
-        if st.button("Save & Proceed to Documents Upload ➡️", type="primary", use_container_width=True):
-            st.session_state["active_tab"] = 2
+        if st.button("Save & Proceed to Deductions Matrix ➡️", type="primary", use_container_width=True):
+            st.session_state["active_tab"] = 3
             st.rerun()
 
-# --- TAB 3: UPLOAD & AUTOMATED EXTRACTION ---
-elif active_tab == 2:
+# --- TAB 2: UPLOAD & AUTOMATED EXTRACTION ---
+elif active_tab == 1:
     st.markdown("### Upload Form 16, 16A, or 16B Certificates")
     st.caption("Our parser reads your financial tables directly to populate income entries securely.")
     
@@ -1016,12 +1056,12 @@ elif active_tab == 2:
     st.markdown("<br><hr>", unsafe_allow_html=True)
     col_prev, col_next = st.columns(2)
     with col_prev:
-        if st.button("⬅️ Back to Income Sources", use_container_width=True):
-            st.session_state["active_tab"] = 1
+        if st.button("⬅️ Back to Personal Details", use_container_width=True):
+            st.session_state["active_tab"] = 0
             st.rerun()
     with col_next:
-        if st.button("Save & Proceed to Deductions Matrix ➡️", type="primary", use_container_width=True):
-            st.session_state["active_tab"] = 3
+        if st.button("Save & Proceed to Income Sources ➡️", type="primary", use_container_width=True):
+            st.session_state["active_tab"] = 2
             st.rerun()
 
 # --- TAB 4: DEDUCTIONS MATRIX ---
