@@ -1,4 +1,4 @@
-# 🏦 TaxMaximizer Wizard - ClearTax-Style ITR Return filing & Tax Optimizer
+# 🏦 TaxMaximizer Wizard - ITR Return filing & Tax Optimizer
 
 TaxMaximizer Wizard is a professional, interactive Streamlit web application designed to compute, optimize, and generate e-filing packages for Indian Income Tax Returns. It performs real-time comparisons between the **Old and New Tax Regimes** using the latest **Union Budget (FY 2025-26 / AY 2026-27)** tax slabs and deductions.
 
