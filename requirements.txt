@@ -1,3 +1,6 @@
 streamlit
 pypdf
 plotly
+PyMuPDF
+pytesseract
+Pillow
