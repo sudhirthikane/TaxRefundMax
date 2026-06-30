@@ -4,7 +4,7 @@ import re
 import datetime
 import json
 import plotly.graph_objects as go
-import pymupdf as fitz
+import fitz
 import pytesseract
 from PIL import Image
 import io
